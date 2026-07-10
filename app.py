@@ -36,7 +36,6 @@ def extrair_pedidos(ficheiro_pdf):
 def calcular_etiquetas(df):
     etiquetas_para_imprimir = []
     
-    # Apenas procura a coluna de Quantidade
     col_qtd = next((col for col in df.columns if 'Qtd' in str(col)), None)
     
     if not col_qtd:
@@ -46,16 +45,15 @@ def calcular_etiquetas(df):
     for index, row in df.iterrows():
         sku = None
         
-        # MAGIA AQUI: Varre TODAS as colunas da linha à procura de 6 dígitos
         for col in df.columns:
             celula = str(row[col]).replace('\n', ' ').strip()
             match = re.search(r'\b\d{6}\b', celula)
             if match:
-                sku = match.group(0) # Achou o SKU de 6 dígitos!
-                break # Para de procurar nesta linha
+                sku = match.group(0) 
+                break 
         
         if not sku:
-            continue # Se não achou SKU (ex: linha de cabeçalho ou rodapé), salta a linha
+            continue 
             
         qtd_str = str(row[col_qtd]).replace(',', '.')
         
@@ -75,19 +73,25 @@ def calcular_etiquetas(df):
             
     return etiquetas_para_imprimir
 
-# --- FUNÇÃO 3: GERAR O PDF FINAL COM REPORTLAB ---
+# --- FUNÇÃO 3: GERAR O PDF FINAL 10x15 cm ---
 def gerar_pdf_etiquetas(lista_skus):
     buffer = io.BytesIO()
+    
+    # Tamanho exato da etiqueta térmica (100mm largura x 150mm altura)
     largura = 100 * mm
-    altura = 50 * mm
+    altura = 150 * mm
     c = canvas.Canvas(buffer, pagesize=(largura, altura))
     data_hoje = datetime.today().strftime("%d/%m/%Y")
     
     for sku in lista_skus:
-        c.setFont("Helvetica-Bold", 36)
-        c.drawCentredString(largura / 2.0, (altura / 2.0) + 5 * mm, sku)
-        c.setFont("Helvetica", 16)
-        c.drawCentredString(largura / 2.0, (altura / 2.0) - 12 * mm, f"Data: {data_hoje}")
+        # SKU bem grande na parte superior central
+        c.setFont("Helvetica-Bold", 60)
+        c.drawCentredString(largura / 2.0, (altura / 2.0) + 15 * mm, sku)
+        
+        # Data um pouco mais abaixo com fonte maior
+        c.setFont("Helvetica", 24)
+        c.drawCentredString(largura / 2.0, (altura / 2.0) - 25 * mm, f"Data: {data_hoje}")
+        
         c.showPage() 
         
     c.save()
@@ -110,7 +114,7 @@ if arquivo_upload is not None:
                 
                 pdf_pronto = gerar_pdf_etiquetas(lista_final)
                 st.download_button(
-                    label="📥 Baixar Etiquetas em PDF",
+                    label="📥 Baixar Etiquetas em PDF (10x15)",
                     data=pdf_pronto,
                     file_name=f"etiquetas_{datetime.today().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf"
