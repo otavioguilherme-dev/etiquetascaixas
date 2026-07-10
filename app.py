@@ -85,28 +85,29 @@ def calcular_etiquetas(df):
             
     return etiquetas_para_imprimir
 
-# --- FUNÇÃO 3: GERAR O PDF FINAL 10x15 cm ---
+# --- FUNÇÃO 3: GERAR O PDF FINAL 15x10 cm (HORIZONTAL) ---
 def gerar_pdf_etiquetas(lista_skus, num_pedido):
     buffer = io.BytesIO()
     
-    largura = 100 * mm
-    altura = 150 * mm
+    # Invertido: 150mm largura x 100mm altura (Horizontal)
+    largura = 150 * mm
+    altura = 100 * mm
     c = canvas.Canvas(buffer, pagesize=(largura, altura))
     data_hoje = datetime.today().strftime("%d/%m/%Y")
     
     for sku in lista_skus:
-        # 1. SKU bem grande na parte superior (Y = 95mm)
-        c.setFont("Helvetica-Bold", 60)
-        c.drawCentredString(largura / 2.0, 95 * mm, sku)
+        # 1. SKU Gigante (Fonte 110) ocupando toda a parte superior (Y = 55mm base)
+        c.setFont("Helvetica-Bold", 110)
+        c.drawCentredString(largura / 2.0, 55 * mm, sku)
         
-        # 2. Apenas os números da data no meio (Y = 60mm)
-        c.setFont("Helvetica", 28)
-        c.drawCentredString(largura / 2.0, 60 * mm, data_hoje)
+        # 2. Data no meio-inferior (Fonte 36)
+        c.setFont("Helvetica", 36)
+        c.drawCentredString(largura / 2.0, 25 * mm, data_hoje)
         
-        # 3. Apenas o número do documento na parte inferior (Y = 35mm)
+        # 3. Número do documento bem na base (Fonte 24)
         if num_pedido:
-            c.setFont("Helvetica", 18)
-            c.drawCentredString(largura / 2.0, 35 * mm, num_pedido)
+            c.setFont("Helvetica", 24)
+            c.drawCentredString(largura / 2.0, 10 * mm, num_pedido)
         
         c.showPage() 
         
@@ -133,7 +134,7 @@ if arquivo_upload is not None:
                 
                 pdf_pronto = gerar_pdf_etiquetas(lista_final, num_pedido)
                 st.download_button(
-                    label="📥 Baixar Etiquetas em PDF (10x15)",
+                    label="📥 Baixar Etiquetas em PDF (15x10 Horizontal)",
                     data=pdf_pronto,
                     file_name=f"etiquetas_{datetime.today().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf"
