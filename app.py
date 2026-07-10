@@ -16,9 +16,21 @@ st.write("Faça o upload do Pedido de Venda em PDF para gerar as etiquetas das c
 # --- FUNÇÃO 1: EXTRAIR DADOS DO PDF ---
 def extrair_pedidos(ficheiro_pdf):
     linhas_tabela = []
+    num_pedido = ""
     
     with pdfplumber.open(ficheiro_pdf) as pdf:
         for page in pdf.pages:
+            texto = page.extract_text()
+            if texto:
+                # Busca exatamente o padrão DAO-000000/0000
+                match_dao = re.search(r'\b(DAO-\d+/\d+)\b', texto)
+                if match_dao:
+                    num_pedido = match_dao.group(1)
+                else:
+                    match_alt = re.search(r'Pedido de Venda N°\.\s*\n?([^\n]+)', texto, re.IGNORECASE)
+                    if match_alt:
+                        num_pedido = match_alt.group(1).strip()
+
             tabela = page.extract_table()
             if tabela:
                 for linha in tabela:
@@ -26,11 +38,11 @@ def extrair_pedidos(ficheiro_pdf):
                         linhas_tabela.append(linha)
     
     if not linhas_tabela:
-        return None
+        return None, num_pedido
         
     cabecalho_seguro = [str(col).replace('\n', ' ').strip() if col else f"Coluna_{i}" for i, col in enumerate(linhas_tabela[0])]
     df = pd.DataFrame(linhas_tabela[1:], columns=cabecalho_seguro)
-    return df
+    return df, num_pedido
 
 # --- FUNÇÃO 2: APLICAR REGRAS E ENCONTRAR SKU EM QUALQUER COLUNA ---
 def calcular_etiquetas(df):
@@ -74,23 +86,27 @@ def calcular_etiquetas(df):
     return etiquetas_para_imprimir
 
 # --- FUNÇÃO 3: GERAR O PDF FINAL 10x15 cm ---
-def gerar_pdf_etiquetas(lista_skus):
+def gerar_pdf_etiquetas(lista_skus, num_pedido):
     buffer = io.BytesIO()
     
-    # Tamanho exato da etiqueta térmica (100mm largura x 150mm altura)
     largura = 100 * mm
     altura = 150 * mm
     c = canvas.Canvas(buffer, pagesize=(largura, altura))
     data_hoje = datetime.today().strftime("%d/%m/%Y")
     
     for sku in lista_skus:
-        # SKU bem grande na parte superior central
+        # 1. SKU bem grande na parte superior (Y = 95mm)
         c.setFont("Helvetica-Bold", 60)
-        c.drawCentredString(largura / 2.0, (altura / 2.0) + 15 * mm, sku)
+        c.drawCentredString(largura / 2.0, 95 * mm, sku)
         
-        # Data um pouco mais abaixo com fonte maior
-        c.setFont("Helvetica", 24)
-        c.drawCentredString(largura / 2.0, (altura / 2.0) - 25 * mm, f"Data: {data_hoje}")
+        # 2. Apenas os números da data no meio (Y = 60mm)
+        c.setFont("Helvetica", 28)
+        c.drawCentredString(largura / 2.0, 60 * mm, data_hoje)
+        
+        # 3. Apenas o número do documento na parte inferior (Y = 35mm)
+        if num_pedido:
+            c.setFont("Helvetica", 18)
+            c.drawCentredString(largura / 2.0, 35 * mm, num_pedido)
         
         c.showPage() 
         
@@ -103,16 +119,19 @@ arquivo_upload = st.file_uploader("Arraste o PDF do mERP aqui", type=["pdf"])
 
 if arquivo_upload is not None:
     try:
-        df_extraido = extrair_pedidos(arquivo_upload)
+        df_extraido, num_pedido = extrair_pedidos(arquivo_upload)
         
         if df_extraido is not None:
             lista_final = calcular_etiquetas(df_extraido)
             
             if lista_final:
                 st.success(f"Sucesso! {len(lista_final)} etiquetas calculadas.")
+                if num_pedido:
+                    st.info(f"📄 Número Identificado: {num_pedido}")
+                
                 st.dataframe(pd.DataFrame({"SKUs a Imprimir": lista_final}))
                 
-                pdf_pronto = gerar_pdf_etiquetas(lista_final)
+                pdf_pronto = gerar_pdf_etiquetas(lista_final, num_pedido)
                 st.download_button(
                     label="📥 Baixar Etiquetas em PDF (10x15)",
                     data=pdf_pronto,
