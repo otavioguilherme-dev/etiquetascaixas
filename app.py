@@ -13,7 +13,7 @@ st.set_page_config(page_title="Gerador de Etiquetas - Borrachas", page_icon="�
 st.title("📦 Gerador Automático de Etiquetas")
 st.write("Faça o upload do Pedido de Venda em PDF para gerar as etiquetas das caixas.")
 
-# --- FUNÇÃO 1: EXTRAIR DADOS DO PDF (COM PROTEÇÃO) ---
+# --- FUNÇÃO 1: EXTRAIR DADOS DO PDF ---
 def extrair_pedidos(ficheiro_pdf):
     linhas_tabela = []
     
@@ -28,36 +28,35 @@ def extrair_pedidos(ficheiro_pdf):
     if not linhas_tabela:
         return None
         
-    # PROTEÇÃO: Garante que o nome das colunas não sejam nulos ou repetidos, o que quebra o Pandas
-    cabecalho_seguro = [str(col).replace('\n', ' ').strip() if col else f"Coluna_Vazia_{i}" for i, col in enumerate(linhas_tabela[0])]
+    cabecalho_seguro = [str(col).replace('\n', ' ').strip() if col else f"Coluna_{i}" for i, col in enumerate(linhas_tabela[0])]
     df = pd.DataFrame(linhas_tabela[1:], columns=cabecalho_seguro)
     return df
 
-# --- FUNÇÃO 2: APLICAR REGRAS DE QUANTIDADE E LIMPAR SKU ---
+# --- FUNÇÃO 2: APLICAR REGRAS E ENCONTRAR SKU EM QUALQUER COLUNA ---
 def calcular_etiquetas(df):
     etiquetas_para_imprimir = []
     
-    col_referencia = next((col for col in df.columns if 'Referência' in str(col) or 'Item' in str(col)), None)
+    # Apenas procura a coluna de Quantidade
     col_qtd = next((col for col in df.columns if 'Qtd' in str(col)), None)
     
-    if not col_referencia or not col_qtd:
-        st.error(f"Colunas não encontradas. Colunas que o sistema leu: {list(df.columns)}")
+    if not col_qtd:
+        st.error("Não foi possível encontrar a coluna 'Qtd'.")
         return []
 
     for index, row in df.iterrows():
-        celula_ref = str(row[col_referencia]).replace('\n', ' ').strip()
-        match_sku = re.search(r'\b\d{6}\b', celula_ref)
+        sku = None
         
-        if match_sku:
-            sku = match_sku.group(0) 
-        else:
-            partes = celula_ref.split()
-            sku = partes[0] if partes else ""
-            for p in partes:
-                if len(p) > 3: 
-                    sku = p
-                    break
+        # MAGIA AQUI: Varre TODAS as colunas da linha à procura de 6 dígitos
+        for col in df.columns:
+            celula = str(row[col]).replace('\n', ' ').strip()
+            match = re.search(r'\b\d{6}\b', celula)
+            if match:
+                sku = match.group(0) # Achou o SKU de 6 dígitos!
+                break # Para de procurar nesta linha
         
+        if not sku:
+            continue # Se não achou SKU (ex: linha de cabeçalho ou rodapé), salta a linha
+            
         qtd_str = str(row[col_qtd]).replace(',', '.')
         
         try:
@@ -95,12 +94,11 @@ def gerar_pdf_etiquetas(lista_skus):
     buffer.seek(0)
     return buffer
 
-# --- INTERFACE DO STREAMLIT COM CAPTURA DE ERRO ---
+# --- INTERFACE DO STREAMLIT ---
 arquivo_upload = st.file_uploader("Arraste o PDF do mERP aqui", type=["pdf"])
 
 if arquivo_upload is not None:
     try:
-        st.info("A ler o documento...")
         df_extraido = extrair_pedidos(arquivo_upload)
         
         if df_extraido is not None:
@@ -109,6 +107,7 @@ if arquivo_upload is not None:
             if lista_final:
                 st.success(f"Sucesso! {len(lista_final)} etiquetas calculadas.")
                 st.dataframe(pd.DataFrame({"SKUs a Imprimir": lista_final}))
+                
                 pdf_pronto = gerar_pdf_etiquetas(lista_final)
                 st.download_button(
                     label="📥 Baixar Etiquetas em PDF",
@@ -123,4 +122,4 @@ if arquivo_upload is not None:
             
     except Exception as e:
         st.error("🚨 Ocorreu um erro interno durante o processamento do PDF.")
-        st.code(traceback.format_exc()) # Isso vai imprimir o erro técnico exato na tela
+        st.code(traceback.format_exc())
