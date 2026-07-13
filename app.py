@@ -59,7 +59,8 @@ def calcular_etiquetas(df):
         
         for col in df.columns:
             celula = str(row[col]).replace('\n', ' ').strip()
-            match = re.search(r'\b\d{6}\b', celula)
+            # MAGIA ATUALIZADA: Procura números que tenham entre 6 e 10 dígitos
+            match = re.search(r'\b\d{6,10}\b', celula)
             if match:
                 sku = match.group(0) 
                 break 
@@ -89,22 +90,19 @@ def calcular_etiquetas(df):
 def gerar_pdf_etiquetas(lista_skus, num_pedido):
     buffer = io.BytesIO()
     
-    # Invertido: 150mm largura x 100mm altura (Horizontal)
     largura = 150 * mm
     altura = 100 * mm
     c = canvas.Canvas(buffer, pagesize=(largura, altura))
     data_hoje = datetime.today().strftime("%d/%m/%Y")
     
     for sku in lista_skus:
-        # 1. SKU Gigante (Fonte 110) ocupando toda a parte superior (Y = 55mm base)
-        c.setFont("Helvetica-Bold", 110)
+        # SKU Gigante (Fonte ajustada para 100 para garantir que 7+ dígitos caibam)
+        c.setFont("Helvetica-Bold", 100)
         c.drawCentredString(largura / 2.0, 55 * mm, sku)
         
-        # 2. Data no meio-inferior (Fonte 36)
         c.setFont("Helvetica", 36)
         c.drawCentredString(largura / 2.0, 25 * mm, data_hoje)
         
-        # 3. Número do documento bem na base (Fonte 24)
         if num_pedido:
             c.setFont("Helvetica", 24)
             c.drawCentredString(largura / 2.0, 10 * mm, num_pedido)
