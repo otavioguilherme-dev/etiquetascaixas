@@ -11,7 +11,6 @@ from reportlab.lib.units import mm
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gerador de Etiquetas - Borrachas", page_icon="📦")
 st.title("📦 Gerador Automático de Etiquetas")
-st.write("Faça o upload do Pedido de Venda em PDF para gerar as etiquetas das caixas.")
 
 # --- FUNÇÃO 1: EXTRAIR DADOS DO PDF ---
 def extrair_pedidos(ficheiro_pdf):
@@ -22,7 +21,6 @@ def extrair_pedidos(ficheiro_pdf):
         for page in pdf.pages:
             texto = page.extract_text()
             if texto:
-                # Busca exatamente o padrão DAO-000000/0000
                 match_dao = re.search(r'\b(DAO-\d+/\d+)\b', texto)
                 if match_dao:
                     num_pedido = match_dao.group(1)
@@ -44,7 +42,7 @@ def extrair_pedidos(ficheiro_pdf):
     df = pd.DataFrame(linhas_tabela[1:], columns=cabecalho_seguro)
     return df, num_pedido
 
-# --- FUNÇÃO 2: APLICAR REGRAS E ENCONTRAR SKU EM QUALQUER COLUNA ---
+# --- FUNÇÃO 2: APLICAR REGRAS E ENCONTRAR SKU ---
 def calcular_etiquetas(df):
     etiquetas_para_imprimir = []
     
@@ -59,7 +57,6 @@ def calcular_etiquetas(df):
         
         for col in df.columns:
             celula = str(row[col]).replace('\n', ' ').strip()
-            # MAGIA ATUALIZADA: Procura números que tenham entre 6 e 10 dígitos
             match = re.search(r'\b\d{6,10}\b', celula)
             if match:
                 sku = match.group(0) 
@@ -87,7 +84,7 @@ def calcular_etiquetas(df):
     return etiquetas_para_imprimir
 
 # --- FUNÇÃO 3: GERAR O PDF FINAL 15x10 cm (HORIZONTAL) ---
-def gerar_pdf_etiquetas(lista_skus, num_pedido):
+def gerar_pdf_etiquetas(lista_skus, num_pedido=""):
     buffer = io.BytesIO()
     
     largura = 150 * mm
@@ -96,13 +93,15 @@ def gerar_pdf_etiquetas(lista_skus, num_pedido):
     data_hoje = datetime.today().strftime("%d/%m/%Y")
     
     for sku in lista_skus:
-        # SKU Gigante (Fonte ajustada para 100 para garantir que 7+ dígitos caibam)
+        # SKU Gigante no topo
         c.setFont("Helvetica-Bold", 100)
-        c.drawCentredString(largura / 2.0, 55 * mm, sku)
+        c.drawCentredString(largura / 2.0, 55 * mm, str(sku))
         
+        # Data no meio
         c.setFont("Helvetica", 36)
         c.drawCentredString(largura / 2.0, 25 * mm, data_hoje)
         
+        # O número do documento só aparece se for fornecido (no modo manual ele é vazio)
         if num_pedido:
             c.setFont("Helvetica", 24)
             c.drawCentredString(largura / 2.0, 10 * mm, num_pedido)
@@ -113,35 +112,65 @@ def gerar_pdf_etiquetas(lista_skus, num_pedido):
     buffer.seek(0)
     return buffer
 
-# --- INTERFACE DO STREAMLIT ---
-arquivo_upload = st.file_uploader("Arraste o PDF do mERP aqui", type=["pdf"])
+# --- INTERFACE DO STREAMLIT COM ABAS ---
+aba1, aba2 = st.tabs(["📄 Automático (PDF mERP)", "✍️ Manual (Avulso)"])
 
-if arquivo_upload is not None:
-    try:
-        df_extraido, num_pedido = extrair_pedidos(arquivo_upload)
-        
-        if df_extraido is not None:
-            lista_final = calcular_etiquetas(df_extraido)
+# ====== ABA 1: AUTOMÁTICO ======
+with aba1:
+    st.write("Faça o upload do Pedido de Venda em PDF para gerar as etiquetas em lote.")
+    arquivo_upload = st.file_uploader("Arraste o PDF aqui", type=["pdf"])
+
+    if arquivo_upload is not None:
+        try:
+            df_extraido, num_pedido = extrair_pedidos(arquivo_upload)
             
-            if lista_final:
-                st.success(f"Sucesso! {len(lista_final)} etiquetas calculadas.")
-                if num_pedido:
-                    st.info(f"📄 Número Identificado: {num_pedido}")
+            if df_extraido is not None:
+                lista_final = calcular_etiquetas(df_extraido)
                 
-                st.dataframe(pd.DataFrame({"SKUs a Imprimir": lista_final}))
-                
-                pdf_pronto = gerar_pdf_etiquetas(lista_final, num_pedido)
-                st.download_button(
-                    label="📥 Baixar Etiquetas em PDF (15x10 Horizontal)",
-                    data=pdf_pronto,
-                    file_name=f"etiquetas_{datetime.today().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf"
-                )
+                if lista_final:
+                    st.success(f"Sucesso! {len(lista_final)} etiquetas calculadas.")
+                    if num_pedido:
+                        st.info(f"📄 Número Identificado: {num_pedido}")
+                    
+                    st.dataframe(pd.DataFrame({"SKUs a Imprimir": lista_final}))
+                    
+                    pdf_pronto = gerar_pdf_etiquetas(lista_final, num_pedido)
+                    st.download_button(
+                        label="📥 Baixar Etiquetas em PDF",
+                        data=pdf_pronto,
+                        file_name=f"etiquetas_{datetime.today().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf"
+                    )
+                else:
+                    st.warning("Nenhuma etiqueta gerada. Verifique as quantidades.")
             else:
-                st.warning("Nenhuma etiqueta gerada. Verifique as quantidades.")
-        else:
-            st.error("Erro ao extrair a tabela do PDF.")
-            
-    except Exception as e:
-        st.error("🚨 Ocorreu um erro interno durante o processamento do PDF.")
-        st.code(traceback.format_exc())
+                st.error("Erro ao extrair a tabela do PDF.")
+                
+        except Exception as e:
+            st.error("🚨 Ocorreu um erro interno durante o processamento do PDF.")
+            st.code(traceback.format_exc())
+
+# ====== ABA 2: MANUAL ======
+with aba2:
+    st.write("Gere etiquetas avulsas digitando o SKU. A data será inserida automaticamente.")
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        sku_manual = st.text_input("Digite o Código / SKU:", placeholder="Ex: 086022")
+    with col2:
+        qtd_manual = st.number_input("Quantidade de Etiquetas:", min_value=1, value=1, step=1)
+
+    if sku_manual:
+        # Cria a lista com o SKU repetido conforme a quantidade escolhida
+        lista_manual = [sku_manual.strip()] * int(qtd_manual)
+        
+        # Gera o PDF enviando a string vazia "" no lugar do número do pedido
+        pdf_manual_pronto = gerar_pdf_etiquetas(lista_manual, "")
+        
+        st.success("Pronto! Clique no botão abaixo para baixar.")
+        st.download_button(
+            label=f"📥 Baixar {qtd_manual} Etiqueta(s) (15x10)",
+            data=pdf_manual_pronto,
+            file_name=f"etiqueta_manual_{sku_manual}_{datetime.today().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
