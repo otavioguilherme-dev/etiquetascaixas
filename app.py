@@ -93,15 +93,12 @@ def gerar_pdf_etiquetas(lista_skus, num_pedido=""):
     data_hoje = datetime.today().strftime("%d/%m/%Y")
     
     for sku in lista_skus:
-        # SKU Gigante no topo
         c.setFont("Helvetica-Bold", 100)
         c.drawCentredString(largura / 2.0, 55 * mm, str(sku))
         
-        # Data no meio
         c.setFont("Helvetica", 36)
         c.drawCentredString(largura / 2.0, 25 * mm, data_hoje)
         
-        # O número do documento só aparece se for fornecido (no modo manual ele é vazio)
         if num_pedido:
             c.setFont("Helvetica", 24)
             c.drawCentredString(largura / 2.0, 10 * mm, num_pedido)
@@ -113,7 +110,7 @@ def gerar_pdf_etiquetas(lista_skus, num_pedido=""):
     return buffer
 
 # --- INTERFACE DO STREAMLIT COM ABAS ---
-aba1, aba2 = st.tabs(["📄 Automático (PDF mERP)", "✍️ Manual (Avulso)"])
+aba1, aba2 = st.tabs(["📄 Automático (PDF mERP)", "✍️ Manual (Lote Avulso)"])
 
 # ====== ABA 1: AUTOMÁTICO ======
 with aba1:
@@ -150,27 +147,47 @@ with aba1:
             st.error("🚨 Ocorreu um erro interno durante o processamento do PDF.")
             st.code(traceback.format_exc())
 
-# ====== ABA 2: MANUAL ======
+# ====== ABA 2: MANUAL (TABELA INTERATIVA) ======
 with aba2:
-    st.write("Gere etiquetas avulsas digitando o SKU. A data será inserida automaticamente.")
+    st.write("Digite os SKUs na tabela abaixo. Para adicionar novas linhas, preencha a última linha vazia ou clique nela. Você também pode colar dados direto do Excel!")
     
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        sku_manual = st.text_input("Digite o Código / SKU:", placeholder="Ex: 086022")
-    with col2:
-        qtd_manual = st.number_input("Quantidade de Etiquetas:", min_value=1, value=1, step=1)
+    # Cria uma tabela inicial com algumas linhas em branco
+    df_inicial = pd.DataFrame([{"SKU": "", "Quantidade": 1} for _ in range(3)])
+    
+    # O st.data_editor permite que o usuário edite a tabela livremente na tela
+    df_editado = st.data_editor(
+        df_inicial,
+        column_config={
+            "SKU": st.column_config.TextColumn("Código / SKU", width="large"),
+            "Quantidade": st.column_config.NumberColumn("Quantidade de Etiquetas", min_value=1, step=1)
+        },
+        num_rows="dynamic", # Permite adicionar ou excluir linhas
+        hide_index=True,
+        use_container_width=True
+    )
 
-    if sku_manual:
-        # Cria a lista com o SKU repetido conforme a quantidade escolhida
-        lista_manual = [sku_manual.strip()] * int(qtd_manual)
-        
-        # Gera o PDF enviando a string vazia "" no lugar do número do pedido
+    # Processa os dados preenchidos na tabela
+    lista_manual = []
+    for index, row in df_editado.iterrows():
+        sku_preenchido = str(row["SKU"]).strip()
+        # Ignora linhas que o usuário não preencheu
+        if sku_preenchido and sku_preenchido.lower() not in ["none", "nan", ""]:
+            try:
+                qtd_preenchida = int(row["Quantidade"])
+            except:
+                qtd_preenchida = 1
+            
+            # Adiciona o SKU à lista final multiplicando pela quantidade
+            lista_manual.extend([sku_preenchido] * qtd_preenchida)
+
+    # Se tiver alguma etiqueta válida na lista, mostra o botão de download
+    if len(lista_manual) > 0:
         pdf_manual_pronto = gerar_pdf_etiquetas(lista_manual, "")
         
-        st.success("Pronto! Clique no botão abaixo para baixar.")
+        st.success(f"Tabela lida com sucesso! {len(lista_manual)} etiqueta(s) pronta(s) para impressão.")
         st.download_button(
-            label=f"📥 Baixar {qtd_manual} Etiqueta(s) (15x10)",
+            label=f"📥 Baixar {len(lista_manual)} Etiqueta(s) Avulsa(s) (15x10)",
             data=pdf_manual_pronto,
-            file_name=f"etiqueta_manual_{sku_manual}_{datetime.today().strftime('%Y%m%d')}.pdf",
+            file_name=f"etiquetas_avulsas_{datetime.today().strftime('%Y%m%d')}.pdf",
             mime="application/pdf"
         )
