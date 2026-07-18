@@ -115,6 +115,7 @@ aba1, aba2 = st.tabs(["📄 Automático (PDF mERP)", "✍️ Manual (Lote Avulso
 # ====== ABA 1: AUTOMÁTICO ======
 with aba1:
     st.write("Faça o upload do Pedido de Venda em PDF para gerar as etiquetas em lote.")
+    # O uploader já possui um botão nativo (o "X") para limpar o arquivo
     arquivo_upload = st.file_uploader("Arraste o PDF aqui", type=["pdf"])
 
     if arquivo_upload is not None:
@@ -149,38 +150,44 @@ with aba1:
 
 # ====== ABA 2: MANUAL (TABELA INTERATIVA) ======
 with aba2:
-    st.write("Digite os SKUs na tabela abaixo. Para adicionar novas linhas, preencha a última linha vazia ou clique nela. Você também pode colar dados direto do Excel!")
+    st.write("Digite os SKUs na tabela abaixo. Para adicionar novas linhas, preencha a última linha vazia ou clique nela.")
     
-    # Cria uma tabela inicial com algumas linhas em branco
+    # Inicia uma "chave" na memória para podermos resetar a tabela
+    if "reset_tabela" not in st.session_state:
+        st.session_state.reset_tabela = 0
+        
+    # Botão de limpar
+    if st.button("🗑️ Limpar Tabela"):
+        st.session_state.reset_tabela += 1 # Muda a chave, forçando a tabela a recriar do zero
+        st.rerun() # Atualiza a página instantaneamente
+
+    # Cria uma tabela inicial em branco
     df_inicial = pd.DataFrame([{"SKU": "", "Quantidade": 1} for _ in range(3)])
     
-    # O st.data_editor permite que o usuário edite a tabela livremente na tela
+    # Vincula a chave dinâmica à tabela
     df_editado = st.data_editor(
         df_inicial,
+        key=f"tabela_manual_{st.session_state.reset_tabela}",
         column_config={
             "SKU": st.column_config.TextColumn("Código / SKU", width="large"),
             "Quantidade": st.column_config.NumberColumn("Quantidade de Etiquetas", min_value=1, step=1)
         },
-        num_rows="dynamic", # Permite adicionar ou excluir linhas
+        num_rows="dynamic",
         hide_index=True,
         use_container_width=True
     )
 
-    # Processa os dados preenchidos na tabela
     lista_manual = []
     for index, row in df_editado.iterrows():
         sku_preenchido = str(row["SKU"]).strip()
-        # Ignora linhas que o usuário não preencheu
         if sku_preenchido and sku_preenchido.lower() not in ["none", "nan", ""]:
             try:
                 qtd_preenchida = int(row["Quantidade"])
             except:
                 qtd_preenchida = 1
             
-            # Adiciona o SKU à lista final multiplicando pela quantidade
             lista_manual.extend([sku_preenchido] * qtd_preenchida)
 
-    # Se tiver alguma etiqueta válida na lista, mostra o botão de download
     if len(lista_manual) > 0:
         pdf_manual_pronto = gerar_pdf_etiquetas(lista_manual, "")
         
